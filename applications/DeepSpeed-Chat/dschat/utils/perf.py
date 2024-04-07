@@ -47,6 +47,8 @@ def print_throughput_step3(actor_model,
                            e2e_time,
                            gen_exp_time,
                            train_time,
+                           prepare_time,
+                           real_time,
                            rank=0):
     if rank <= 0:
         # Actor model passed here is a HF model.
@@ -132,7 +134,13 @@ def print_throughput_step3(actor_model,
             f"Generation => Latency: {gen_exp_time:.2f}s, Per-token Latency {pertok_lat*1000:.2f} ms, TFLOPs: {gen_tflops:.2f}, BW: {gen_bw if num_bytes > 0 else num_bytes:.2f} GB/sec, Answer Seq. Length: {args.max_answer_seq_len}"
         )
         print(
+            f"Preparation => Latency: {prepare_time:.2f}s"
+        )
+        print(
             f"Training   => Latency: {train_time:.2f}s, TFLOPs: {train_tflops:.2f}"
+        )
+        print(
+            f"End-to-End => Latency: {e2e_time:.2f}s, Real-End-to-End: {e2e_time:.2f}s"
         )
         actor_param_string = f"{actor_params_in_billions:.3f} B" if actor_params_in_billions != 0 else "NA"
         critic_param_string = f"{critic_params_in_billions:.3f} B" if critic_params_in_billions != 0 else "NA"

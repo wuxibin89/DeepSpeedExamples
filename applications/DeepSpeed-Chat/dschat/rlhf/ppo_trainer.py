@@ -70,6 +70,7 @@ class DeepSpeedPPOTrainer():
         self.gamma = 1.0
         self.lam = 0.95
         self.generate_time = 0.0
+        self.preprare_time = 0.0
 
     def _generate_sequence(self, prompts, mask, step):
 
@@ -131,6 +132,7 @@ class DeepSpeedPPOTrainer():
             return None
 
         out_seq = torch.cat(out_seq, dim=0)  # concat output in the batch dim
+        print(f"out_seq size: {out_seq.size()}")
 
         return out_seq
 
@@ -166,6 +168,7 @@ class DeepSpeedPPOTrainer():
             logits_ref = logits_ref.to(torch.float)
 
         self.generate_time = generate_end - generate_start
+        self.preprare_time = time.time() - generate_end
 
         return {
             'prompts': prompts,

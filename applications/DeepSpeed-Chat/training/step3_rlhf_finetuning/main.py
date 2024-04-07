@@ -539,6 +539,7 @@ def main(args):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Generation Batches {min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))}",
             args.global_rank)
+        real_time_start = time.time()
         for step, (batch_prompt, batch_unsupervised) in enumerate(
                 zip(prompt_train_dataloader, unsupervised_train_dataloader)):
 
@@ -596,15 +597,19 @@ def main(args):
 
                 end = time.time()
                 training_time = end - training_start
-                e2e_time = training_time + trainer.generate_time * args.generation_batches  # it is an approximation, we did not include, e.g., rw forward time etc
+                e2e_time = training_time + (trainer.generate_time + trainer.preprare_time) * args.generation_batches  # it is an approximation, we did not include, e.g., rw forward time etc
+
+                # 统计真实的时间
+                real_time = end - real_time_start
+                real_time_start = end
 
                 print_rank_0(
                     f'Epoch: {epoch} | Step: {step} | PPO Epoch: {ppo_ep+1} | Actor Loss: {actor_loss_sum/inner_iter} | Critic Loss: {critic_loss_sum/inner_iter} | Unsupervised Loss: {unsup_loss_sum/inner_iter}',
                     args.global_rank)
                 print_throughput_step3(rlhf_engine.actor.module,
-                                       rlhf_engine.critic, args, e2e_time,
-                                       trainer.generate_time, training_time,
-                                       args.global_rank)
+                                       rlhf_engine.critic, args, e2e_time=e2e_time, prepare_time=trainer.preprare_time,
+                                       gen_exp_time=trainer.generate_time, train_time=training_time, real_time=real_time,
+                                       rank=args.global_rank)
 
                 average_reward = get_all_reduce_mean(average_reward).item()
                 step_average_reward += average_reward / args.gradient_accumulation_steps_actor
