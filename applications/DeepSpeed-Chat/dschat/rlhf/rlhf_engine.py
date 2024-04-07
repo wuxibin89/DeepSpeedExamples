@@ -92,7 +92,8 @@ class DeepSpeedRLHFEngine():
             model_name_or_path=actor_model_name_or_path,
             tokenizer=self.tokenizer,
             ds_config=ds_config,
-            dropout=self.args.actor_dropout)
+            dropout=self.args.actor_dropout,
+            rlhf_training=True)
 
         # LoRA
         if self.args.actor_lora_dim > 0:
@@ -150,7 +151,7 @@ class DeepSpeedRLHFEngine():
 
         ref_model = create_hf_model(AutoModelForCausalLM,
                                     actor_model_name_or_path, self.tokenizer,
-                                    ds_config)
+                                    ds_config, rlhf_training=True)
 
         ref_engine, *_ = deepspeed.initialize(model=ref_model,
                                               config=ds_config)
@@ -268,7 +269,7 @@ class DeepSpeedRLHFEngine():
             # If critic is ZeRO-3 then we use it for everything, otherwise assume we have enough memory
             zero_stage = 0
 
-        ds_config = get_eval_ds_config(offload=self.args.offload,
+        ds_config = get_eval_ds_config(offload=self.args.offload_reference_model,
                                        dtype=self.args.dtype,
                                        stage=zero_stage)
         ds_config[
@@ -277,7 +278,7 @@ class DeepSpeedRLHFEngine():
             'train_batch_size'] = self.args.per_device_training_batch_size * torch.distributed.get_world_size(
             ) * self.args.gradient_accumulation_steps
 
-        ds_eval_config = get_eval_ds_config(offload=False,
+        ds_eval_config = get_eval_ds_config(offload=self.args.offload_reference_model,
                                             dtype=self.args.dtype,
                                             stage=zero_stage)
 

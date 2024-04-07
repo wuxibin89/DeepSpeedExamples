@@ -141,6 +141,7 @@ def create_critic_model(model_name_or_path,
         num_padding_at_beginning=num_padding_at_beginning,
         compute_fp32_loss=compute_fp32_loss)
 
+    rlhf_training = False
     if rlhf_training:
         # load critic model from checkpoint
 

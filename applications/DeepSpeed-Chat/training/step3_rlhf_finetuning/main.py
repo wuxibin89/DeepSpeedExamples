@@ -42,6 +42,9 @@ from dschat.utils.module.lora import convert_lora_to_linear_layer
 from dschat.utils.perf import print_throughput_step3
 from deepspeed.accelerator import get_accelerator
 
+import ray
+from training.step3_rlhf_finetuning.group import PPORayActorGroup, DistributedTorchRayActor
+
 writer = None
 
 
@@ -49,6 +52,24 @@ def parse_args():
     global writer
     parser = argparse.ArgumentParser(
         description="(Step 3) RLHF training arguments")
+
+    parser.add_argument(
+        "--enable_ray",
+        action='store_true',
+        help="Run on ray cluster",
+    )
+    parser.add_argument(
+        "--num_nodes",
+        type=int,
+        default=1,
+        help="Number of nodes"
+    )
+    parser.add_argument(
+        "--num_gpus_per_node",
+        type=int,
+        default=8,
+        help="Number of GPUs per node"
+    )
 
     parser.add_argument(
         '--data_path',
@@ -399,6 +420,7 @@ def create_datasets(args, tokenizer, train_phase=3):
         args.local_rank, args.data_path, args.data_split,
         args.data_output_path, train_phase, args.seed, tokenizer,
         args.max_prompt_seq_len)
+    print(f"prompt dataset size: {len(prompt_train_dataset)}")
     if unsupervised_training_enabled:
         unsupervised_train_dataset = get_unsupervised_data(args, tokenizer)
     else:
@@ -440,16 +462,22 @@ def create_datasets(args, tokenizer, train_phase=3):
     return prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters
 
 
-def main():
-    args = parse_args()
-
-    if args.local_rank == -1:
-        device = torch.device(get_accelerator().device_name())
+def main(args):
+    if not args.enable_ray:
+        if args.local_rank == -1:
+            device = torch.device(get_accelerator().device_name())
+        else:
+            get_accelerator().set_device(args.local_rank)
+            device = torch.device(get_accelerator().device_name(), args.local_rank)
+            # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
+            deepspeed.init_distributed()
     else:
-        get_accelerator().set_device(args.local_rank)
-        device = torch.device(get_accelerator().device_name(), args.local_rank)
-        # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
+        torch.cuda.set_device(0)
+        device = torch.cuda.current_device()
         deepspeed.init_distributed()
+        args.local_rank = int(os.environ["LOCAL_RANK"]) 
+        os.environ["LOCAL_RANK"] = "0"
+    print(f"args.local_rank: {args.local_rank}")
 
     args.global_rank = torch.distributed.get_rank()
 
@@ -668,4 +696,16 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+
+    if not args.enable_ray:
+        main(args)
+        os._exit(0)
+    
+    actor_group = PPORayActorGroup(
+        args.num_nodes,
+        args.num_gpus_per_node,
+        DistributedTorchRayActor
+    )
+
+    ray.get(actor_group.async_run_method(main, args))
